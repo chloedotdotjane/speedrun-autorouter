@@ -18,14 +18,14 @@ html, body {
 
 #credits {
 	float: right;
-	margin-top: 5px;
+	margin-top: 12px;
 }
 #credits p, #credits a {
 	float:  left;
 	display: inline;
 	color:  orchid;
 	background-color: burlywood;
-	font-size: 25px;
+	font-size: 15px;
 	font-family:  "Papyrus";
 
 }

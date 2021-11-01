@@ -2,6 +2,13 @@ import {Rectangle, Viewport} from "./editor.mjs";
 
 
 const canvas = document.querySelector('#main_canvas');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+function degToRad(degrees) {
+    return degrees * Math.PI / 180;
+}
+
 
 let vp = new Viewport(canvas)
 

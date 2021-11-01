@@ -1,68 +1,68 @@
 * {
-	margin: 0;
+    margin: 0;
 }
 
 html, body {
-	height:  100%;
+    height: 100%;
 }
+
 #overall_container {
-	width: 100%;
-	height: 100%;
+    width: 100%;
+    height: 100%;
 }
 
 #nav {
-	height: 50px;
-	width: 100%;
-	background-color: hotpink;
+    height: 50px;
+    width: 100%;
+    background-color: hotpink;
 }
 
 #credits {
-	float: right;
-	margin-top: 12px;
-}
-#credits p, #credits a {
-	float:  left;
-	display: inline;
-	color:  orchid;
-	background-color: burlywood;
-	font-size: 15px;
-	font-family:  "Papyrus";
+    float: right;
+    height: 100%;
 
+    color: orchid;
+    background-color: burlywood;
+    font-size: 15px;
+    font-family: "Papyrus";
+    vertical-align: middle;
+    height: 100%;
 }
+
 #nav h1 {
-	font-family: "Comic Sans MS";
-	display:  inline;
+    font-family: "Comic Sans MS";
+    display: inline;
 }
 
 #main_container {
-	width: 100%;
-	height: calc(100% - 50px);	/* calc() bad */
+    width: 100%;
+    height: calc(100% - 50px); /* calc() bad */
 }
 
 #toolbar {
-	width: 120px;
-	height: 100%;
-	background-color: seagreen;
-	float: left;
+    width: 120px;
+    height: 100%;
+    background-color: seagreen;
+    float: left;
 }
 
 #tooldbar h1 {
-	text-align: center;
-	width: 100%;
+    text-align: center;
+    width: 100%;
 
 }
 
 #toolbar button {
-	width: 50px;
-	height: 50px;
-	margin: 5px;
+    width: 50px;
+    height: 50px;
+    margin: 5px;
 }
 
 #editor {
-	width:  100%;
-	height: 100%;
-	margin: 0;
-	margin-left: 120px;
-	background-color: aliceblue;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    margin-left: 120px;
+    background-color: aliceblue;
 
 }

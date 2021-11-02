@@ -409,7 +409,7 @@ export class Editor {
     }
 
     handle_editor_wheel_event(e) {
-        let newScale = this.viewport.scaleFactor + e.deltaY / 10.0;
+        let newScale = this.viewport.scaleFactor - e.deltaY / 10.0;
         if (newScale > 10)
             newScale = 10;
         if (newScale < 0.1)

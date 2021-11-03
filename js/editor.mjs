@@ -3,7 +3,7 @@
  */
 import {
     MAP_BACKGROUND_STYLE,
-    MAP_NODE_ACTIVE_STYLE,
+    MAP_NODE_ACTIVE_STYLE, MAP_NODE_HELD_STYLE,
     MAP_NODE_HOVER_STYLE,
     MAP_NODE_STYLE
 } from "./style.mjs";
@@ -11,9 +11,13 @@ import {
 class EditorEvent extends Event {
     sourceEntity;
 
-    constructor(type, sourceEntity) {
+    constructor(type, sourceEntity, props = {}) {
         super("editor_" + type);
         this.sourceEntity = sourceEntity;
+
+        for (const [key, value] of Object.entries(props)) {
+            this[key] = value;
+        }
     }
 }
 
@@ -28,14 +32,51 @@ class NopEditorEvent extends EditorEvent {
 }
 
 class Entity {
-    zIndex;
+    zIndex = 0;
     hovered = false;
     active = false;
 
+    /* is non-null if currently held */
+    moveHandleOffset = null;
+
     constructor() {
-        this.zIndex = 0;
     }
 
+    /**
+     * subclasses should override this is x, y does not represent center
+     * point -- it's used to e.g. to determine both how to move an entity and
+     * collision with a selection box.
+     * @returns {{x, y}}
+     */
+    getCenterPointCoord() {
+        return {x: this.x, y: this.y};
+    }
+
+    /**
+     * subclasses should override this is x, y does not represent center
+     * point -- it's used to e.g. to determine both how to move an entity and
+     * collision with a selection box.
+     *
+     * @param x: new center point x
+     * @param y: new center point y
+     */
+    setCenterPointCoord(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    /**
+     * Using this canvas's context, draw this entity.
+     *
+     * With the exception of this function and where annotated as px_, x and
+     * y values are an abstract coordinate system. Conversion functions are
+     * necessarily provided to convert coordinates to pixel values.
+     * @param ctx: 2d context of an html canvas
+     * @param xToPx function converting an absolute x value to pixel x position
+     * @param yToPx function converting an absolute y value to pixel y position
+     * @param dToPx function converting distance in abstract coordinates to
+     * distance in pixels
+     */
     draw(ctx, xToPx, yToPx, dToPx) {
 
     }
@@ -44,23 +85,23 @@ class Entity {
         return false;
     }
 
-    handleMouseDown(dispatch) {
-        dispatch(new EditorEvent("mousedown", this));
+    handleMouseDown(dispatch, x, y) {
+        dispatch(new EditorEvent("entity_mousedown", this, {x: x, y: y}));
         return true;
     }
 
-    handleMouseUp(dispatch) {
-        dispatch(new EditorEvent("mouseup", this));
+    handleMouseUp(dispatch, x, y) {
+        dispatch(new EditorEvent("entity_mouseup", this, {x: x, y: y}));
         return true;
     }
 
-    handleMouseMove(dispatch) {
-        dispatch(new EditorEvent("mousemove", this));
+    handleMouseMove(dispatch, x, y) {
+        dispatch(new EditorEvent("entity_mousemove", this, {x: x, y: y}));
         return true;
     }
 
     handleWheel(dispatch, x, y, deltaX, deltaY) {
-        let e = new EditorEvent("wheel", this);
+        let e = new EditorEvent("entity_wheel", this);
         e.x = x;
         e.y = y;
         e.deltaX = deltaX;
@@ -75,6 +116,21 @@ class Entity {
 
     setActive(state) {
         this.active = state;
+    }
+
+    startMove(handle_x, handle_y) {
+        let {x, y} = this.getCenterPointCoord();
+        this.moveHandleOffset = {x: handle_x - x, y: handle_y - y};
+    }
+
+    move(handle_x, handle_y) {
+        if (this.moveHandleOffset !== null)
+            this.setCenterPointCoord(handle_x - this.moveHandleOffset.x,
+                handle_y - this.moveHandleOffset.y);
+    }
+
+    endMove() {
+        this.moveHandleOffset = null;
     }
 }
 
@@ -99,7 +155,6 @@ class Rectangle extends Entity {
         ctx.fillRect(xToPx(this.x), yToPx(this.y), dToPx(this.width), dToPx(this.height));
     }
 
-
     coordinateCollides(x, y) {
         return x >= this.x
             && x <= this.x + this.width
@@ -107,10 +162,10 @@ class Rectangle extends Entity {
             && y <= this.y + this.height;
     }
 
-    handleMouseDown(dispatch) {
-        dispatch(new EditorEvent("rect_mouse_down", this));
-        return true;
-    }
+    // handleMouseDown(dispatch, x, y) {
+    //     dispatch(new EditorEvent("rect_mouse_down", this, {x: x, y: y}));
+    //     return true;
+    // }
 }
 
 class MapNode extends Entity {
@@ -122,8 +177,8 @@ class MapNode extends Entity {
         super();
         this.x = x;
         this.y = y;
+        this.zIndex = 10;
     }
-
 
     draw(ctx, xToPx, yToPx, dToPx) {
         super.draw(ctx, xToPx, yToPx, dToPx);
@@ -142,21 +197,6 @@ class MapNode extends Entity {
         return Math.hypot(this.x - x, this.y - y) < this.style.radius;
     }
 
-    handleMouseDown(dispatch) {
-        dispatch(new EditorEvent("map_node_mousedown", this));
-        return true;
-    }
-
-    handleMouseUp(dispatch) {
-        dispatch(new EditorEvent("map_node_mouseup", this));
-        return true;
-    }
-
-    handleMouseMove(dispatch) {
-        dispatch(new EditorEvent("map_node_mousemove", this));
-        return true;
-    }
-
     setHovered(state) {
         super.setHovered(state);
 
@@ -169,8 +209,22 @@ class MapNode extends Entity {
         this.updateStyle();
     }
 
+    startMove(handle_x, handle_y) {
+        super.startMove(handle_x, handle_y);
+
+        this.updateStyle();
+    }
+
+    endMove() {
+        super.endMove();
+
+        this.updateStyle();
+    }
+
     updateStyle() {
-        if (this.active)
+        if (this.moveHandleOffset !== null)
+            this.style = MAP_NODE_HELD_STYLE;
+        else if (this.active)
             this.style = MAP_NODE_ACTIVE_STYLE;
         else if (this.hovered)
             this.style = MAP_NODE_HOVER_STYLE;
@@ -273,12 +327,27 @@ class Viewport extends EventTarget {
         this.setView(new_x, new_y, newScaleFactor);
     }
 
+    /**
+     * move the current view such that coordinate (x, y) ends up at pixel
+     * location (px_x, px_y)
+     * @param x
+     * @param y
+     * @param px_x
+     * @param px_y
+     */
+    moveViewByPoint(x, y, px_x, px_y) {
+        let dx = x - this.xFromPx(px_x);
+        let dy = y - this.yFromPx(px_y);
+
+        this.setView(this.x + dx, this.y + dy, this.scaleFactor);
+    }
+
     addEntity(e) {
         this.entities.push(e)
         // higher z-index = precedence for handling clicks; put them at
         // front of the list
         this.entities.sort((a, b) => {
-            return a.zIndex < b.zIndex;
+            return b.zIndex - a.zIndex;
         })
     }
 
@@ -299,29 +368,38 @@ class Viewport extends EventTarget {
 
     handleMouseDown(x, y) {
         for (let e of this.entities) {
-            if (e.coordinateCollides(x, y) && e.handleMouseDown((e) => this.dispatchEvent(e)))
+            if (e.coordinateCollides(x, y) && e.handleMouseDown((e) => this.dispatchEvent(e), x, y))
                 return;
         }
 
-        this.dispatchEvent(new EditorEvent("bg_mousedown", null));
+        this.dispatchEvent(new EditorEvent("bg_mousedown",
+            null,
+            {x: x, y: y}
+        ));
     }
 
     handleMouseUp(x, y) {
         for (let e of this.entities) {
-            if (e.coordinateCollides(x, y) && e.handleMouseUp((e) => this.dispatchEvent(e)))
+            if (e.coordinateCollides(x, y) && e.handleMouseUp((e) => this.dispatchEvent(e), x, y))
                 return;
         }
 
-        this.dispatchEvent(new EditorEvent("bg_mouseup", null));
+        this.dispatchEvent(new EditorEvent("bg_mouseup",
+            null,
+            {x: x, y: y}
+        ));
     }
 
     handleMouseMove(x, y) {
         for (let e of this.entities) {
-            if (e.coordinateCollides(x, y) && e.handleMouseMove((e) => this.dispatchEvent(e)))
+            if (e.coordinateCollides(x, y) && e.handleMouseMove((e) => this.dispatchEvent(e), x, y))
                 return;
         }
 
-        this.dispatchEvent(new EditorEvent("bg_mousemove", null));
+        this.dispatchEvent(new EditorEvent("bg_mousemove",
+            null,
+            {x: x, y: y}
+        ));
     }
 
     handleWheel(x, y, deltaX, deltaY) {
@@ -331,12 +409,8 @@ class Viewport extends EventTarget {
                 return;
         }
 
-        let e = new EditorEvent("bg_wheel", this);
-        e.x = x;
-        e.y = y;
-        e.deltaX = deltaX;
-        e.deltaY = deltaY;
-        this.dispatchEvent(e);
+        this.dispatchEvent(new EditorEvent("bg_wheel", this,
+            {x: x, y: y, deltaX: deltaX, deltaY: deltaY}));
     }
 
     addEditorEventListener(type, listener, options) {
@@ -354,6 +428,10 @@ export class Editor {
 
     hoveredEntity = null;
     activeEntity = null;
+    selectedEntities = [];
+    heldEntity = null;
+
+    backgroundPanCoord = null;
 
     constructor(canvas) {
         this.viewport = new Viewport(canvas);
@@ -364,40 +442,55 @@ export class Editor {
         this.viewport.addEntity(new MapNode(200, 200));
         this.viewport.draw()
         let events = [
-            "mousedown",
-            "mouseup",
-            "mousemove",
-            "wheel",
-            "map_node_mousedown",
-            "map_node_mouseup",
-            "map_node_mousemove",
-            "map_node_wheel",
+            "entity_mousedown",
+            "entity_mouseup",
+            "entity_mousemove",
+            "entity_wheel",
             "bg_mousedown",
             "bg_mouseup",
             "bg_mousemove",
             "bg_wheel",
-
         ]
-        for (let e of events)
-            this.viewport.addEditorEventListener(e, (e) => this.handle_editor_event(e))
 
         for (let e of events) {
             if (e.endsWith("mousemove"))
-                this.viewport.addEditorEventListener(e, (e) => this.handle_editor_mousemove_event(e))
+                this.viewport.addEditorEventListener(e, (e) => this.handle_editor_mousemove(e))
 
         }
         for (let e of events) {
             if (e.endsWith("wheel"))
-                this.viewport.addEditorEventListener(e, (e) => this.handle_editor_wheel_event(e))
-
+                this.viewport.addEditorEventListener(e, (e) => this.handle_editor_wheel(e))
         }
+
+        this.viewport.addEditorEventListener("bg_mousedown",
+            (e) => this.handle_editor_bg_mousedown(e));
+        this.viewport.addEditorEventListener("bg_mouseup",
+            (e) => this.handle_editor_mouseup(e));
+        this.viewport.addEditorEventListener("entity_mousedown",
+            (e) => this.handle_editor_entity_mousedown(e));
+        this.viewport.addEditorEventListener("entity_mouseup",
+            (e) => this.handle_editor_mouseup(e));
     }
 
     handle_editor_event(e) {
 
     }
 
-    handle_editor_mousemove_event(e) {
+    handle_editor_mousemove(e) {
+        if (this.heldEntity === "bg") {
+            this.viewport.moveViewByPoint(
+                this.backgroundPanCoord[0],
+                this.backgroundPanCoord[1],
+                this.viewport.xToPx(e.x),
+                this.viewport.yToPx(e.y))
+
+            this.viewport.draw();
+            return;
+        } else if (this.heldEntity !== null) {
+            this.heldEntity.move(e.x, e.y);
+
+            this.viewport.draw();
+        }
         if (e.sourceEntity !== this.hoveredEntity) {
             this.hoveredEntity?.setHovered(false);
             e.sourceEntity?.setHovered(true);
@@ -408,7 +501,7 @@ export class Editor {
         }
     }
 
-    handle_editor_wheel_event(e) {
+    handle_editor_wheel(e) {
         let newScale = this.viewport.scaleFactor - e.deltaY / 10.0;
         if (newScale > 10)
             newScale = 10;
@@ -416,6 +509,29 @@ export class Editor {
             newScale = 0.1;
 
         this.viewport.changeScaleCenteredOnPoint(e.x, e.y, newScale);
+        this.viewport.draw();
+    }
+
+    handle_editor_mouseup(e) {
+        if (this.heldEntity !== null && this.heldEntity === e.sourceEntity) {
+            e.sourceEntity.endMove();
+            this.viewport.draw();
+        }
+
+        this.heldEntity = null;
+        document.body.style.cursor = "default";
+    }
+
+    handle_editor_bg_mousedown(e) {
+        this.heldEntity = "bg";
+        document.body.style.cursor = "move";
+        this.backgroundPanCoord = [e.x, e.y];
+    }
+
+    handle_editor_entity_mousedown(e) {
+        this.heldEntity = e.sourceEntity;
+        document.body.style.cursor = "grabbing";
+        e.sourceEntity.startMove(e.x, e.y);
         this.viewport.draw();
     }
 }

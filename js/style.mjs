@@ -18,7 +18,7 @@ export const MAP_NODE_STYLE = {
 }
 
 export const MAP_NODE_HOVER_STYLE = {
-    radius: 27,
+    radius: 25,
     strokeColor: '#b0b0f0',
     fillColor: '#7070a0',
     alpha: 0.8,
@@ -31,4 +31,12 @@ export const MAP_NODE_ACTIVE_STYLE = {
     fillColor: '#505080',
     alpha: 0.8,
     strokeWidth: 2,
+}
+
+export const MAP_NODE_HELD_STYLE = {
+    radius: 27,
+    strokeColor: '#b0b0f0',
+    fillColor: '#7070a0',
+    alpha: 0.6,
+    strokeWidth: 3,
 }

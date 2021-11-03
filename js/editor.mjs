@@ -183,10 +183,12 @@ class MapNode extends Entity {
     draw(ctx, xToPx, yToPx, dToPx) {
         super.draw(ctx, xToPx, yToPx, dToPx);
 
-        ctx.globalAlpha = this.style.alpha;
-        ctx.fillStyle = this.style.fillColor;
-        ctx.strokeStyle = this.style.strokeColor;
-        ctx.lineWidth = this.style.strokeWidth;
+
+        for (const [key, value] of Object.entries(this.style)) {
+            if (key in ctx)
+                ctx[key] = value;
+        }
+
         ctx.beginPath();
         ctx.arc(xToPx(this.x), yToPx(this.y), dToPx(this.style.radius), 0, 2 * Math.PI);
         ctx.fill();
@@ -262,6 +264,8 @@ class Viewport extends EventTarget {
 
     // list of instances we know about
     entities;
+
+    isWaitingForFrame = false;
 
     constructor(canvas) {
         super();
@@ -344,18 +348,27 @@ class Viewport extends EventTarget {
 
     addEntity(e) {
         this.entities.push(e)
-        // higher z-index = precedence for handling clicks; put them at
-        // front of the list
+        // keep in descending zIndex order
         this.entities.sort((a, b) => {
             return b.zIndex - a.zIndex;
         })
     }
 
     draw() {
+        if (this.isWaitingForFrame)
+            return;
+
+        this.isWaitingForFrame = true;
+        window.requestAnimationFrame((timestamp) => this.drawInner());
+
+    }
+    drawInner() {
         this.ctx.fillStyle = MAP_BACKGROUND_STYLE.fillColor;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        for (let e of this.entities)
-            this.drawEntity(e);
+        for (let i = this.entities.length - 1; i >=0 ; i--)
+            this.drawEntity(this.entities[i]);
+
+        this.isWaitingForFrame = false;
     }
 
     drawEntity(e) {
@@ -502,7 +515,7 @@ export class Editor {
     }
 
     handle_editor_wheel(e) {
-        let newScale = this.viewport.scaleFactor - e.deltaY / 10.0;
+        let newScale = this.viewport.scaleFactor - e.deltaY / 30.0;
         if (newScale > 10)
             newScale = 10;
         if (newScale < 0.1)

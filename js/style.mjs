@@ -11,32 +11,30 @@ export const MAP_BACKGROUND_STYLE = {
 
 export const MAP_NODE_STYLE = {
     radius: 25,
-    strokeColor: '#8080c0',
-    fillColor: '#505080',
-    alpha: 0.8,
-    strokeWidth: 2,
+    strokeStyle: '#8080c0',
+    fillStyle: '#505080',
+    //globalAlpha: 0.8,
+    lineWidth: 2,
 }
 
 export const MAP_NODE_HOVER_STYLE = {
-    radius: 25,
-    strokeColor: '#b0b0f0',
-    fillColor: '#7070a0',
-    alpha: 0.8,
-    strokeWidth: 2,
+    ...MAP_NODE_STYLE,
+    strokeStyle: '#b0b0f0',
+    fillStyle: '#7070a0',
 }
 
 export const MAP_NODE_ACTIVE_STYLE = {
-    radius: 25,
-    strokeColor: '#8080c0',
-    fillColor: '#505080',
-    alpha: 0.8,
-    strokeWidth: 2,
+    ...MAP_NODE_STYLE,
+    fillStyle: '#404070',
 }
 
 export const MAP_NODE_HELD_STYLE = {
+    ...MAP_NODE_HOVER_STYLE,
     radius: 27,
-    strokeColor: '#b0b0f0',
-    fillColor: '#7070a0',
-    alpha: 0.6,
-    strokeWidth: 3,
+    //globalAlpha: 0.8,
+    lineWidth: 3,
+    shadowColor: '#202030',
+    shadowBlur: 25,
+    shadowOffsetX: 0,
+    shadowOffsetY: 15,
 }

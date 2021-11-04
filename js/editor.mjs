@@ -550,7 +550,9 @@ class EditorTool {
     }
 
     handle_editor_mouseup(e) {
-        if (this.heldEntity !== null && this.heldEntity === e.sourceEntity) {
+        //  prob should check if it's an entity here instead of checking
+        //  if it's not bg, same with somewhere else I did this I think
+        if (this.heldEntity !== null && this.heldEntity !== "bg") {
             e.sourceEntity.endMove();
             this.editor.viewport.draw();
         }

@@ -8,6 +8,8 @@ import {
     MAP_NODE_STYLE
 } from "./style.mjs";
 
+const UINT32_MAX = 4294967295;
+
 class EditorEvent extends Event {
     sourceEntity;
 
@@ -36,10 +38,37 @@ class Entity {
     hovered = false;
     active = false;
 
+    type = "base";
+    id;
+
     /* is non-null if currently held */
     moveHandleOffset = null;
 
-    constructor() {
+    constructor(props) {
+        for (const [key, value] of Object.entries(props)) {
+            this[key] = value;
+        }
+
+        this.id ??= Math.floor(Math.random() * UINT32_MAX);
+    }
+
+    listSavedFieldNames() {
+        return [
+            "type",
+            "id",
+        ]
+    }
+
+    toJSON() {
+        let ret = {};
+        let names = this.listSavedFieldNames();
+        for (const name of names)
+        {
+            if (this[name])
+                ret[name] = this[name];
+        }
+
+        return ret;
     }
 
     /**
@@ -138,13 +167,25 @@ class Entity {
  * Just a test class, not actually useful or part of end goal
  */
 class Rectangle extends Entity {
-    constructor(x, y, width, height, color) {
-        super();
-        this.x = x;
-        this.y = y;
-        this.width = width;
-        this.height = height;
-        this.color = color;
+    type = "rect";
+    constructor(props, x, y, width, height, color) {
+        super(props);
+        this.x ??= x;
+        this.y ??= y;
+        this.width ??= width;
+        this.height ??= height;
+        this.color ??= color;
+    }
+
+
+    listSavedFieldNames() {
+        return super.listSavedFieldNames().concat([
+            "x",
+            "y",
+            "width",
+            "height",
+            "color",
+        ]);
     }
 
     draw(ctx, xToPx, yToPx, dToPx) {
@@ -169,15 +210,21 @@ class Rectangle extends Entity {
 }
 
 class MapNode extends Entity {
-    x;
-    y;
+    type = "MapNode"
     style = MAP_NODE_STYLE;
 
-    constructor(x, y) {
-        super();
-        this.x = x;
-        this.y = y;
+    constructor(props, x, y) {
+        super(props);
+        this.x ??= x;
+        this.y ??= y;
         this.zIndex = 10;
+    }
+
+    listSavedFieldNames() {
+        return super.listSavedFieldNames().concat([
+            "x",
+            "y",
+        ]);
     }
 
     draw(ctx, xToPx, yToPx, dToPx) {
@@ -362,10 +409,11 @@ class Viewport extends EventTarget {
         window.requestAnimationFrame((timestamp) => this.drawInner());
 
     }
+
     drawInner() {
         this.ctx.fillStyle = MAP_BACKGROUND_STYLE.fillColor;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        for (let i = this.entities.length - 1; i >=0 ; i--)
+        for (let i = this.entities.length - 1; i >= 0; i--)
             this.drawEntity(this.entities[i]);
 
         this.isWaitingForFrame = false;
@@ -436,23 +484,136 @@ class Viewport extends EventTarget {
 
 }
 
+/**
+ * Base tool provides default handling of events, like panning, zooming and
+ * picking up entities to move them around.
+ */
+class EditorTool {
+    editor;
+
+    hoveredEntity = null;
+    heldEntity = null;
+    backgroundPanCoord = null;
+
+    constructor(editor) {
+        this.editor = editor;
+    }
+
+    setActive() {
+        this.hoveredEntity = null;
+        this.heldEntity = null;
+        this.backgroundPanCoord = null;
+    }
+
+    setInactive() {
+        if (this.heldEntity !== null && this.heldEntity !== "bg") {
+            this.heldEntity.endMove();
+            this.editor.viewport.draw();
+        }
+        document.body.style.cursor = "default";
+    }
+
+    handle_editor_mousemove(e) {
+        if (this.heldEntity === "bg") {
+            this.editor.viewport.moveViewByPoint(
+                this.backgroundPanCoord[0],
+                this.backgroundPanCoord[1],
+                this.editor.viewport.xToPx(e.x),
+                this.editor.viewport.yToPx(e.y))
+
+            this.editor.viewport.draw();
+            return;
+        } else if (this.heldEntity !== null) {
+            this.heldEntity.move(e.x, e.y);
+
+            this.editor.viewport.draw();
+        }
+        if (e.sourceEntity !== this.hoveredEntity) {
+            this.hoveredEntity?.setHovered(false);
+            e.sourceEntity?.setHovered(true);
+
+            this.hoveredEntity = e.sourceEntity;
+
+            this.editor.viewport.draw();
+        }
+    }
+
+    handle_editor_wheel(e) {
+        let newScale = this.editor.viewport.scaleFactor - e.deltaY / 30.0;
+        if (newScale > 10)
+            newScale = 10;
+        if (newScale < 0.1)
+            newScale = 0.1;
+
+        this.editor.viewport.changeScaleCenteredOnPoint(e.x, e.y, newScale);
+        this.editor.viewport.draw();
+    }
+
+    handle_editor_mouseup(e) {
+        if (this.heldEntity !== null && this.heldEntity === e.sourceEntity) {
+            e.sourceEntity.endMove();
+            this.editor.viewport.draw();
+        }
+
+        this.heldEntity = null;
+        document.body.style.cursor = "default";
+    }
+
+    handle_editor_bg_mousedown(e) {
+        this.heldEntity = "bg";
+        document.body.style.cursor = "move";
+        this.backgroundPanCoord = [e.x, e.y];
+    }
+
+    handle_editor_entity_mousedown(e) {
+        this.heldEntity = e.sourceEntity;
+        document.body.style.cursor = "grabbing";
+        e.sourceEntity.startMove(e.x, e.y);
+        this.editor.viewport.draw();
+    }
+
+}
+
+class PointerTool extends EditorTool {
+
+}
+
+class AddNodeTool extends EditorTool {
+    handle_editor_bg_mousedown(e) {
+        document.body.style.cursor = "grabbing";
+        let n = new MapNode({}, e.x, e.y);
+        this.heldEntity = n;
+        this.editor.viewport.addEntity(n);
+        n.startMove(e.x, e.y);
+        this.editor.viewport.draw();
+    }
+}
+
+class AddEdgeTool extends EditorTool {
+
+}
+
 export class Editor {
     viewport;
 
-    hoveredEntity = null;
-    activeEntity = null;
-    selectedEntities = [];
-    heldEntity = null;
+    currentTool = null;
+    tools = {
+        pointer: new PointerTool(this),
+        addNode: new AddNodeTool(this),
+        addEdge: new AddEdgeTool(this),
+    }
+    toolButtons = {};
 
-    backgroundPanCoord = null;
-
-    constructor(canvas) {
+    constructor(canvas, toolButtons) {
         this.viewport = new Viewport(canvas);
-        this.viewport.addEntity(new Rectangle(30, 81, 100, 50, 'rgb(100, 100,' +
-            ' 100'));
-        this.viewport.addEntity(new Rectangle(50, 100, 100, 150, 'rgb(100,' +
-            ' 200, 100'));
-        this.viewport.addEntity(new MapNode(200, 200));
+        this.toolButtons = toolButtons;
+
+        this.viewport.addEntity(new Rectangle({}, 30, 81, 100, 50, 'rgb(100,' +
+                    ' 100,' +
+            ' 100)'));
+        this.viewport.addEntity(new Rectangle({}, 50, 100, 100, 150, 'rgb(100,' +
+            ' 200, 100)'));
+        this.viewport.addEntity(new MapNode({}, 200, 200));
         this.viewport.draw()
         let events = [
             "entity_mousedown",
@@ -483,68 +644,47 @@ export class Editor {
             (e) => this.handle_editor_entity_mousedown(e));
         this.viewport.addEditorEventListener("entity_mouseup",
             (e) => this.handle_editor_mouseup(e));
+
+
+        for (let [k, v] of Object.entries(this.toolButtons))
+            v.onclick = () => this.selectTool(k);
+
+        this.selectTool("pointer")
     }
 
-    handle_editor_event(e) {
+    selectTool(toolName) {
+        this.currentTool?.setInactive();
 
+        for (let [k, v] of Object.entries(this.toolButtons))
+            v.classList.remove("selected");
+
+        this.currentTool = this.tools[toolName];
+
+        this.toolButtons[toolName].classList.add("selected")
+        this.currentTool?.setActive();
+    }
+
+    serializeEntities(space) {
+        return JSON.stringify(this.viewport.entities, null, space);
     }
 
     handle_editor_mousemove(e) {
-        if (this.heldEntity === "bg") {
-            this.viewport.moveViewByPoint(
-                this.backgroundPanCoord[0],
-                this.backgroundPanCoord[1],
-                this.viewport.xToPx(e.x),
-                this.viewport.yToPx(e.y))
-
-            this.viewport.draw();
-            return;
-        } else if (this.heldEntity !== null) {
-            this.heldEntity.move(e.x, e.y);
-
-            this.viewport.draw();
-        }
-        if (e.sourceEntity !== this.hoveredEntity) {
-            this.hoveredEntity?.setHovered(false);
-            e.sourceEntity?.setHovered(true);
-
-            this.hoveredEntity = e.sourceEntity;
-
-            this.viewport.draw();
-        }
+        this.currentTool?.handle_editor_mousemove(e);
     }
 
     handle_editor_wheel(e) {
-        let newScale = this.viewport.scaleFactor - e.deltaY / 30.0;
-        if (newScale > 10)
-            newScale = 10;
-        if (newScale < 0.1)
-            newScale = 0.1;
-
-        this.viewport.changeScaleCenteredOnPoint(e.x, e.y, newScale);
-        this.viewport.draw();
+        this.currentTool?.handle_editor_wheel(e);
     }
 
     handle_editor_mouseup(e) {
-        if (this.heldEntity !== null && this.heldEntity === e.sourceEntity) {
-            e.sourceEntity.endMove();
-            this.viewport.draw();
-        }
-
-        this.heldEntity = null;
-        document.body.style.cursor = "default";
+        this.currentTool?.handle_editor_mouseup(e);
     }
 
     handle_editor_bg_mousedown(e) {
-        this.heldEntity = "bg";
-        document.body.style.cursor = "move";
-        this.backgroundPanCoord = [e.x, e.y];
+        this.currentTool?.handle_editor_bg_mousedown(e);
     }
 
     handle_editor_entity_mousedown(e) {
-        this.heldEntity = e.sourceEntity;
-        document.body.style.cursor = "grabbing";
-        e.sourceEntity.startMove(e.x, e.y);
-        this.viewport.draw();
+        this.currentTool?.handle_editor_entity_mousedown(e);
     }
 }

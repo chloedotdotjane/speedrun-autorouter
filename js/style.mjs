@@ -10,7 +10,7 @@ export const MAP_BACKGROUND_STYLE = {
 }
 
 export const MAP_NODE_STYLE = {
-    radius: 25,
+    radius: 7,
     strokeStyle: '#8080c0',
     fillStyle: '#505080',
     //globalAlpha: 0.8,
@@ -30,11 +30,19 @@ export const MAP_NODE_ACTIVE_STYLE = {
 
 export const MAP_NODE_HELD_STYLE = {
     ...MAP_NODE_HOVER_STYLE,
-    radius: 27,
+    radius: MAP_NODE_HOVER_STYLE.radius+2,
     //globalAlpha: 0.8,
     lineWidth: 3,
     shadowColor: '#202030',
     shadowBlur: 25,
     shadowOffsetX: 0,
     shadowOffsetY: 15,
+}
+
+export const MAP_EDGE_STYLE = {
+    strokeStyle: '#8080c0',
+    fillStyle: '#505080',
+    lineWidth: 2,
+    arrowHeadLength: 8,
+    arrowHeadAngle: 0.6,
 }

@@ -3,7 +3,9 @@
  */
 import {
     MAP_BACKGROUND_STYLE,
-    MAP_NODE_ACTIVE_STYLE, MAP_NODE_HELD_STYLE,
+    MAP_EDGE_STYLE,
+    MAP_NODE_ACTIVE_STYLE,
+    MAP_NODE_HELD_STYLE,
     MAP_NODE_HOVER_STYLE,
     MAP_NODE_STYLE
 } from "./style.mjs";
@@ -23,23 +25,20 @@ class EditorEvent extends Event {
     }
 }
 
-/**
- * Indicates no action should be taken in response to some UI interaction.
- * (No-op)
- */
-class NopEditorEvent extends EditorEvent {
-    constructor(sourceEntity) {
-        super("null", sourceEntity);
-    }
-}
-
 class Entity {
     zIndex = 0;
     hovered = false;
     active = false;
 
     type = "base";
+    persist_type;   /* special flag marking above variable should be
+     exported when saving data */
+
     id;
+    persist_id;
+
+    name = "";
+    persist_name;
 
     /* is non-null if currently held */
     moveHandleOffset = null;
@@ -52,19 +51,11 @@ class Entity {
         this.id ??= Math.floor(Math.random() * UINT32_MAX);
     }
 
-    listSavedFieldNames() {
-        return [
-            "type",
-            "id",
-        ]
-    }
-
     toJSON() {
         let ret = {};
-        let names = this.listSavedFieldNames();
-        for (const name of names)
-        {
-            if (this[name])
+        let names = Object.getOwnPropertyNames(this);
+        for (const name of names) {
+            if ("persist_" + name in this)
                 ret[name] = this[name];
         }
 
@@ -104,9 +95,10 @@ class Entity {
      * @param xToPx function converting an absolute x value to pixel x position
      * @param yToPx function converting an absolute y value to pixel y position
      * @param dToPx function converting distance in abstract coordinates to
+     * @param viewport reference to the viewport currently performing this draw
      * distance in pixels
      */
-    draw(ctx, xToPx, yToPx, dToPx) {
+    draw(ctx, xToPx, yToPx, dToPx, viewport) {
 
     }
 
@@ -168,6 +160,17 @@ class Entity {
  */
 class Rectangle extends Entity {
     type = "rect";
+    x;
+    persist_x;
+    y;
+    persist_y;
+    width;
+    persist_width;
+    height;
+    persist_height;
+    color;
+    persist_color;
+
     constructor(props, x, y, width, height, color) {
         super(props);
         this.x ??= x;
@@ -177,19 +180,8 @@ class Rectangle extends Entity {
         this.color ??= color;
     }
 
-
-    listSavedFieldNames() {
-        return super.listSavedFieldNames().concat([
-            "x",
-            "y",
-            "width",
-            "height",
-            "color",
-        ]);
-    }
-
-    draw(ctx, xToPx, yToPx, dToPx) {
-        super.draw(ctx, xToPx, yToPx, dToPx);
+    draw(ctx, xToPx, yToPx, dToPx, viewport) {
+        super.draw(ctx, xToPx, yToPx, dToPx, viewport);
 
         ctx.globalAlpha = 0.4
         ctx.fillStyle = this.color;
@@ -213,6 +205,11 @@ class MapNode extends Entity {
     type = "MapNode"
     style = MAP_NODE_STYLE;
 
+    x;
+    persist_x;
+    y;
+    persist_y;
+
     constructor(props, x, y) {
         super(props);
         this.x ??= x;
@@ -220,15 +217,8 @@ class MapNode extends Entity {
         this.zIndex = 10;
     }
 
-    listSavedFieldNames() {
-        return super.listSavedFieldNames().concat([
-            "x",
-            "y",
-        ]);
-    }
-
-    draw(ctx, xToPx, yToPx, dToPx) {
-        super.draw(ctx, xToPx, yToPx, dToPx);
+    draw(ctx, xToPx, yToPx, dToPx, viewport) {
+        super.draw(ctx, xToPx, yToPx, dToPx, viewport);
 
 
         for (const [key, value] of Object.entries(this.style)) {
@@ -280,6 +270,105 @@ class MapNode extends Entity {
         else
             this.style = MAP_NODE_STYLE;
     }
+}
+
+class MapEdge extends Entity {
+    type = "MapEdge"
+    style = MAP_EDGE_STYLE;
+
+    fromId;
+    persist_fromId;
+
+    toId;
+    persist_toId
+
+    direction;   // "to" or "from" or "both"
+    persist_direction;
+
+    // computed and cached for optimization, fromId and toId are truth
+    toEntity = null;
+    fromEntity = null;
+
+    constructor(props, fromId, toId, direction) {
+        super(props);
+        this.zIndex = 9;
+        this.fromId ??= fromId;
+        this.toId ??= toId;
+        this.direction ??= direction;
+    }
+
+    draw(ctx, xToPx, yToPx, dToPx, viewport) {
+        super.draw(ctx, xToPx, yToPx, dToPx, viewport);
+
+        // check our cached value's validity
+        if (this.toEntity == null || this.toEntity.id !== this.toId)
+            this.toEntity = viewport.getEntityById(this.toId);
+        if (this.fromEntity == null || this.fromEntity.id !== this.fromId)
+            this.fromEntity = viewport.getEntityById(this.fromId);
+
+        if (this.toEntity === null || this.fromEntity === null)
+            return;
+
+        let {x: fromX, y: fromY} = this.fromEntity.getCenterPointCoord();
+        let {x: toX, y: toY} = this.toEntity.getCenterPointCoord();
+
+        for (const [key, value] of Object.entries(this.style))
+            if (key in ctx)
+                ctx[key] = value;
+
+
+        let theta = Math.atan2(fromY - toY, fromX - toX);
+        if (this.direction === "to" || this.direction === "both") {
+            let theta = Math.atan2(fromY - toY, fromX - toX);
+
+            let radius = (this.toEntity.style.radius + viewport.dFromPx(this.toEntity.style.lineWidth)) || 0;
+            let arrowTipX = toX + Math.cos(theta) * radius;
+            let arrowTipY = toY + Math.sin(theta) * radius;
+            let arrowLeftX = arrowTipX + Math.cos(theta - this.style.arrowHeadAngle / 2) * (this.style.arrowHeadLength);
+            let arrowLeftY = arrowTipY + Math.sin(theta - this.style.arrowHeadAngle / 2) * (this.style.arrowHeadLength);
+            let arrowRightX = arrowTipX + Math.cos(theta + this.style.arrowHeadAngle / 2) * (this.style.arrowHeadLength);
+            let arrowRightY = arrowTipY + Math.sin(theta + this.style.arrowHeadAngle / 2) * (this.style.arrowHeadLength);
+
+            toX = (arrowLeftX + arrowRightX) / 2;
+            toY = (arrowLeftY + arrowRightY) / 2;
+
+            ctx.beginPath();
+            ctx.moveTo(xToPx(arrowTipX), yToPx(arrowTipY));
+            ctx.lineTo(xToPx(arrowLeftX), yToPx(arrowLeftY));
+            ctx.lineTo(xToPx(arrowRightX), yToPx(arrowRightY));
+            ctx.closePath();
+            ctx.stroke();
+            ctx.fill();
+        }
+
+        if (this.direction === "from" || this.direction === "both") {
+            let radius = (this.fromEntity.style.radius + viewport.dFromPx(this.fromEntity.style.lineWidth)) || 0;
+            let arrowTipX = fromX - Math.cos(theta) * radius;
+            let arrowTipY = fromY - Math.sin(theta) * radius;
+            let arrowLeftX = arrowTipX - Math.cos(theta - this.style.arrowHeadAngle / 2) * (this.style.arrowHeadLength);
+            let arrowLeftY = arrowTipY - Math.sin(theta - this.style.arrowHeadAngle / 2) * (this.style.arrowHeadLength);
+            let arrowRightX = arrowTipX - Math.cos(theta + this.style.arrowHeadAngle / 2) * (this.style.arrowHeadLength);
+            let arrowRightY = arrowTipY - Math.sin(theta + this.style.arrowHeadAngle / 2) * (this.style.arrowHeadLength);
+
+            fromX = (arrowLeftX + arrowRightX) / 2;
+            fromY = (arrowLeftY + arrowRightY) / 2;
+
+            ctx.beginPath();
+            ctx.moveTo(xToPx(arrowTipX), yToPx(arrowTipY));
+            ctx.lineTo(xToPx(arrowLeftX), yToPx(arrowLeftY));
+            ctx.lineTo(xToPx(arrowRightX), yToPx(arrowRightY));
+            ctx.closePath();
+            ctx.stroke();
+            ctx.fill();
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(xToPx(fromX), yToPx(fromY));
+        ctx.lineTo(xToPx(toX), yToPx(toY));
+        ctx.stroke();
+    }
+
+
 }
 
 
@@ -401,6 +490,12 @@ class Viewport extends EventTarget {
         })
     }
 
+    getEntityById(id) {
+        for (let e of this.entities)
+            if (e.id === id)
+                return e;
+    }
+
     draw() {
         if (this.isWaitingForFrame)
             return;
@@ -422,7 +517,7 @@ class Viewport extends EventTarget {
     drawEntity(e) {
         this.ctx.save()
 
-        e.draw(this.ctx, this.xToPx, this.yToPx, this.dToPx);
+        e.draw(this.ctx, this.xToPx, this.yToPx, this.dToPx, this);
 
         this.ctx.restore()
     }
@@ -611,11 +706,16 @@ export class Editor {
         this.toolButtons = toolButtons;
 
         this.viewport.addEntity(new Rectangle({}, 30, 81, 100, 50, 'rgb(100,' +
-                    ' 100,' +
+            ' 100,' +
             ' 100)'));
         this.viewport.addEntity(new Rectangle({}, 50, 100, 100, 150, 'rgb(100,' +
             ' 200, 100)'));
-        this.viewport.addEntity(new MapNode({}, 200, 200));
+        let a = new MapNode({}, 200, 200);
+        let b = new MapNode({}, 300, 400);
+        this.viewport.addEntity(a);
+        this.viewport.addEntity(b);
+        this.viewport.addEntity(new MapEdge({}, a.id, b.id, "both"));
+
         this.viewport.draw()
         let events = [
             "entity_mousedown",
@@ -664,6 +764,10 @@ export class Editor {
 
         this.toolButtons[toolName].classList.add("selected")
         this.currentTool?.setActive();
+    }
+
+    selectEntity(entity) {
+
     }
 
     serializeEntities(space) {

@@ -2,8 +2,8 @@ import {Editor} from "./editor.mjs";
 
 
 const canvas = document.querySelector('#main_canvas');
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+canvas.width = window.innerWidth - 120 - 350;
+canvas.height = window.innerHeight - 50;
 
 const toolButtons = {
     pointer: document.getElementById("pointer_tool"),
@@ -13,4 +13,4 @@ const toolButtons = {
 
 let e = new Editor(canvas, toolButtons);
 
-console.log(e.serializeEntities(4))
+console.log(e.serializeEntities(2))
